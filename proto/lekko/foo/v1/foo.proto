@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package org.foo.v1;
+package lekko.foo.v1;
 
 message Bar {
   string baz = 1;
