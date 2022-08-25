@@ -38,6 +38,10 @@ dockerbuildworkspace:
 dockermakeworkspace: dockerbuildworkspace
 	docker run -v "$(CURDIR):$(DOCKER_WORKSPACE_DIR)" $(DOCKER_WORKSPACE_IMAGE) make -j 8 $(DOCKERMAKETARGET)
 
+ifneq (,$(findstring amd64,$(MAKECMDGOALS)))
+    DOCKER_BUILD_EXTRA_FLAGS=--platform=linux/amd64
+endif
+
 .PHONY: dockerbuild
 dockerbuild:: govendor
 

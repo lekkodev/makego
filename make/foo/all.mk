@@ -1,10 +1,5 @@
 GO_BINS := $(GO_BINS) cmd/foo
 DOCKER_BINS := $(DOCKER_BINS) foo
-# To build a docker image that can run locally on a mac, 
-# run `LOCAL=true make dockerbuild`. 
-ifndef LOCAL
-	DOCKER_BUILD_EXTRA_FLAGS := --platform=linux/amd64
-endif
 
 LICENSE_HEADER_LICENSE_TYPE := apache
 LICENSE_HEADER_COPYRIGHT_HOLDER := Lekko Technologies, Inc.
