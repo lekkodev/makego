@@ -11,8 +11,6 @@ $(call _assert_var,GO_MODULE)
 $(call _assert_var,DOCKER_ORG)
 # Must be set
 $(call _assert_var,DOCKER_PROJECT)
-# Must be set
-$(call _assert_var,DOCKER_REMOTE)
 
 DOCKER_WORKSPACE_IMAGE := $(DOCKER_ORG)/$(DOCKER_PROJECT)-workspace
 DOCKER_WORKSPACE_FILE := Dockerfile.workspace
