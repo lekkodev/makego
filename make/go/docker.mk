@@ -11,6 +11,8 @@ $(call _assert_var,GO_MODULE)
 $(call _assert_var,DOCKER_ORG)
 # Must be set
 $(call _assert_var,DOCKER_PROJECT)
+# Must be set
+$(call _assert_var,DOCKER_REMOTE)
 
 DOCKER_WORKSPACE_IMAGE := $(DOCKER_ORG)/$(DOCKER_PROJECT)-workspace
 DOCKER_WORKSPACE_FILE := Dockerfile.workspace
@@ -38,26 +40,62 @@ dockerbuildworkspace:
 dockermakeworkspace: dockerbuildworkspace
 	docker run -v "$(CURDIR):$(DOCKER_WORKSPACE_DIR)" $(DOCKER_WORKSPACE_IMAGE) make -j 8 $(DOCKERMAKETARGET)
 
+.PHONY: dockerbuildlocal
 .PHONY: dockerbuild
-dockerbuild:: govendor
 
 define dockerbinfunc
 .PHONY: dockerbuilddeps$(1)
 dockerbuilddeps$(1)::
 
+.PHONY: dockerbuildlocal$(1)
+dockerbuildlocal$(1): dockerbuilddeps$(1)
+# TODO figure out how to handle vendoring better, this works for now.
+	go mod vendor
+	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_ORG)/$(1):latest -f Dockerfile.$(1) .
+	@rm -rf vendor
+
 .PHONY: dockerbuild$(1)
 dockerbuild$(1): dockerbuilddeps$(1)
-	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_ORG)/$(1):latest -f Dockerfile.$(1) .
-ifdef EXTRA_DOCKER_ORG
-	docker tag $(DOCKER_ORG)/$(1):latest $(EXTRA_DOCKER_ORG)/$(1):latest
-endif
+	go mod vendor
+	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):amd64 -f Dockerfile.$(1) --platform=linux/amd64 .
+	@rm -rf vendor
 
+.PHONY: dockerpush$(1)
+dockerpush$(1): dockerbuilddeps$(1)
+# TODO: some main branch protection, check if there are any local changes, etc.
+	$(eval GIT_HASH := $(shell git rev-parse HEAD))
+	$(eval DATE := $(shell date +'%Y-%m-%d'))
+	$(eval TAG := $(DATE)_$(GIT_HASH))
+	@read -p "Do you want to create and push a git tag in this format: $(TAG) [Press any key to continue]: "
+	git tag -f $(TAG)
+	go mod vendor
+	docker build $(DOCKER_BUILD_EXTRA_FLAGS) -t $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG) -f Dockerfile.$(1) --platform=linux/amd64 .
+	@rm -rf vendor
+
+	@read -p "Do you want to push this image: $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG) [Press any key to continue]: "
+	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $(DOCKER_REMOTE)
+	docker push $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1):$(TAG)
+
+	@read -p "Do you want to push this image as latest in $(DOCKER_REMOTE)/$(DOCKER_ORG)/$(1)? If this is a test build, feel free to Ctrl+C now. [Press any key to continue]: "
+
+	@$(MAKE) dockertaglatest$(1)
+
+	@read -p "Do you want to push this tag to main: $(TAG) [Press any key to continue]: "
+	git push origin --tags
+
+dockertaglatest$(1):
+	$(eval GIT_HASH := $(shell git rev-parse HEAD))
+	$(eval DATE := $(shell date +'%Y-%m-%d'))
+	$(eval TAG := $(DATE)_$(GIT_HASH))
+	$(eval MANIFEST := $(shell aws ecr batch-get-image --region us-east-1 --repository-name $(DOCKER_ORG)/$(1) --image-ids imageTag=$(TAG) --query 'images[].imageManifest' --output text))
+	aws ecr put-image --region us-east-1 --repository-name $(DOCKER_ORG)/$(1) --image-tag latest --image-manifest '${MANIFEST}'
+
+dockerbuildlocal:: dockerbuildlocal$(1)
 dockerbuild:: dockerbuild$(1)
+# Intentionally don't create a grouped dockerpush.
 endef
 
 $(foreach dockerbin,$(sort $(DOCKER_BINS)),$(eval $(call dockerbinfunc,$(dockerbin))))
-
-dockerbuild:: removegovendor
 
 .PHONY: updatedockerignores
 updatedockerignores:
